@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="utf-8">
+    <title>Blue Ske E-Learn Challenge</title>
+    <!-- Add this to <head> -->
+    <link type="text/css" rel="stylesheet" href="https://unpkg.com/bootstrap/dist/css/bootstrap.min.css" />
+    <link type="text/css" rel="stylesheet" href="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.css" />
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12"></script>
+
+    <script src="https://unpkg.com/babel-polyfill@latest/dist/polyfill.min.js"></script>
+    <script src="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+</head>
+
+<body>
+    <div id="vm">
+        <template>
+            <b-container fluid>
+                <b-row>
+                    <b-col md="6" class="my-1">
+                        <b-form-group horizontal label="Filter" class="mb-0">
+                            <b-input-group>
+                                <b-form-input v-model="filter" placeholder="Type to Search" />
+                            </b-input-group>
+                        </b-form-group>
+                    </b-col>
+                    <b-col md="6" class="my-1">
+                        <b-form-group horizontal label="Per page" class="mb-0">
+                            <b-form-select :options="pageOptions" v-model="perPage" @change="retrieveEventData()" />
+                        </b-form-group>
+                    </b-col>
+                    <b-col md="6" class="my-1">
+                        <b-form-group horizontal label="TimeZone" class="mb-0">
+                            <b-form-select :options="timeZones" v-model="timeZone" @change="retrieveEventData()" />
+                        </b-form-group>
+                    </b-col>
+                </b-row>
+
+                <b-table stacked="md" :items="items" :fields="fields" :current-page="currentPage" :per-page="perPage"
+                    :filter="filter" :sort-direction="sortDirection" @filtered="onFiltered" responsive="sm">
+                    <template v-slot:cell(title)="data">
+                        <div @click="rowSelected(data)">{{data.item.title}}</div>
+                    </template>
+
+                    <template v-slot:row-details="data">
+                        <div v-for="event in data.item.conferenceDetails">
+                            <b-card>
+                                <b-row class="mb-2">
+                                    <b-col sm="3" class="text-sm-right"><b>Title:</b></b-col>
+                                    <b-col>{{ event.title }}</b-col>
+                                </b-row>
+
+                                <b-row class="mb-2">
+                                    <b-col sm="3" class="text-sm-right"><b>Description:</b></b-col>
+                                    <b-col>{{ event.description }}</b-col>
+                                </b-row>
+
+                                <b-row class="mb-2">
+                                    <b-col sm="3" class="text-sm-right"><b>Start Time:</b></b-col>
+                                    <b-col>{{ event.starts_at.local_pretty }}</b-col>
+                                </b-row>
+
+                                <b-row class="mb-2">
+                                    <b-col sm="3" class="text-sm-right"><b>End Time:</b></b-col>
+                                    <b-col>{{ event.ends_at.local_pretty }}</b-col>
+                                </b-row>
+
+                                <b-row class="mb-2">
+                                    <b-col sm="3" class="text-sm-right"><b>Speakers:</b></b-col>
+                                    <b-col v-b-modal.modal-1 @click="speakersSelected(event.conference_id, data)">
+                                        {{ event.speakers }}
+                                    </b-col>
+                                </b-row>
+
+                                <b-row class="mb-2">
+                                    <b-col sm="3" class="text-sm-right"><b>Attendees:</b></b-col>
+                                    <b-col v-b-modal.modal-2 @click="attendeesSelected(event.conference_id, data)">
+                                        {{ event.attendees }}
+                                    </b-col>
+                                </b-row>
+                            </b-card>
+                        </div>
+
+                        <b-modal id="modal-1" title="Speakers">
+                            <div v-for="speaker in data.item.speakers">
+                                <b-card>
+                                    <b-row class="mb-2">
+                                        <b-col sm="3" class="text-sm-right"><b>Name:</b></b-col>
+                                        <b-col>{{ speaker.first_name }} {{ speaker.last_name }}</b-col>
+                                    </b-row>
+
+                                    <b-row class="mb-2">
+                                        <b-col sm="3" class="text-sm-right"><b>E-mail:</b></b-col>
+                                        <b-col>{{ speaker.email }} </b-col>
+                                    </b-row>
+
+                                    <b-row class="mb-2">
+                                        <b-col sm="3" class="text-sm-right"><b>Company:</b></b-col>
+                                        <b-col>{{ speaker.company }} </b-col>
+                                    </b-row>
+
+                                    <b-row class="mb-2">
+                                        <b-col sm="3" class="text-sm-right"><b>Job Title:</b></b-col>
+                                        <b-col>{{ speaker.job_title }} </b-col>
+                                    </b-row>
+                                </b-card>
+                            </div>
+                        </b-modal>
+                        <b-modal id="modal-2" title="Attendees">
+                            <b-table :fields="attendeeFields" :items="items[data.index]['attendees']"
+                                :per-page="attendeePerPage" :current-page="attendeeCurrentPage">
+                                <!-- <b-row class="mb-2">
+                                            <b-col sm="3" class="text-sm-right"><b>Name:</b></b-col>
+                                            <b-col>{{ attendee.first_name }} {{ attendee.last_name }}</b-col>
+                                        </b-row>
+
+                                        <b-row class="mb-2">
+                                            <b-col sm="3" class="text-sm-right"><b>E-mail:</b></b-col>
+                                            <b-col>{{ attendee.email }} </b-col>
+                                        </b-row> -->
+                            </b-table>
+                            <b-row>
+                                <b-col md="6" class="my-1">
+                                    <b-pagination :total-rows="totalRows" :per-page="attendeePerPage"
+                                        v-model="attendeeCurrentPage" class="my-0" />
+                                </b-col>
+                            </b-row>
+                        </b-modal>
+                    </template>
+                </b-table>
+
+                <b-row>
+                    <b-col md="6" class="my-1">
+                        <b-pagination :total-rows="totalRows" :per-page="perPage" v-model="currentPage" class="my-0"
+                            @input="retrieveEventData()" />
+                    </b-col>
+                </b-row>
+
+            </b-container>
+        </template>
+    </div>
+    <script type="text/javascript">
+
+        const items = [];
+        var app = new Vue({
+            el: '#vm',
+            data: {
+                items: items,
+                fields: [
+                    { key: 'title', label: 'Title', sortable: true, sortDirection: 'desc' },
+                    { key: 'description', label: 'Description', sortable: true },
+                    { key: 'starts_at.local_pretty', label: 'Starts At:' },
+                    { key: 'ends_at.local_pretty', label: 'Ends At:' },
+                ],
+                attendeeFields: [
+                    { key: 'first_name', label: 'First Name' },
+                    { key: 'last_name', label: 'Last Name' },
+                    { key: 'email', label: 'E-mail' }
+                ],
+                currentPage: 1,
+                attendeeCurrentPage: 1,
+                perPage: 5,
+                attendeePerPage: 50,
+                totalRows: null,
+                attendeeTotalRows: null,
+                pageOptions: [...Array(25).keys()].map(x => ++x),
+                timeZone: 'US/Pacific',
+                timeZones: ['US/Arizona', 'US/Central', 'US/East-Indiana', 'US/Eastern', 'US/Hawaii', 'US/Indiana-Starke', 'US/Michigan', 'US/Mountain', 'US/Pacific', 'UTC'],
+                sortDirection: 'asc',
+                filter: null,
+            },
+            mounted() {
+                this.retrieveEventData('US/Pacific');
+            },
+            methods: {
+                retrieveEventData() {
+                    axios
+                        .get('https://bluesky-fe-challenge.herokuapp.com/events/', { headers: { 'X-Time-Zone': this.timeZone, 'X-Per-Page': this.perPage, 'X-Page': this.currentPage } })
+                        .then(response => {
+                            response.data.data.events.forEach(event => {
+                                event['_showDetails'] = false;
+                                event['conferenceDetails'] = null;
+                                event['speakers'] = null;
+                                event['attendees'] = null
+                            });
+                            this.items = response.data.data.events;
+                            this.totalRows = response.data.data.meta.total_objects;
+                        })
+                },
+                onFiltered(filteredItems) {
+                    this.totalRows = filteredItems.length
+                    this.currentPage = 1
+                },
+                rowSelected(data) {
+                    data.item._showDetails = !this.items[data.index]._showDetails;
+                    axios
+                        .get('https://bluesky-fe-challenge.herokuapp.com/events/' + data.item.event_id + '/conferences', { headers: { 'X-Time-Zone': this.timeZone } })
+                        .then(response => {
+                            this.items[data.index]['conferenceDetails'] = response.data.response.conferences;
+                        })
+                },
+                attendeesSelected(conferenceId, data) {
+                    axios
+                        .get('https://bluesky-fe-challenge.herokuapp.com/conferences/' + conferenceId + '/attendees', { headers: { 'X-Time-Zone': this.timeZone } })
+                        .then(response => {
+                            console.log(response.attendees);
+                            this.items[data.index]['attendees'] = response.data.response.attendees;
+                            console.log(this.items);
+                        })
+                },
+                speakersSelected(conferenceId, data) {
+                    axios
+                        .get('https://bluesky-fe-challenge.herokuapp.com/conferences/' + conferenceId + '/speakers', { headers: { 'X-Time-Zone': this.timeZone } })
+                        .then(response => {
+                            console.log(response.speakers);
+                            this.items[data.index]['speakers'] = response.data.response.speakers;
+                            console.log(this.items);
+                        })
+                },
+
+            },
+        });
+    </script>
+</body>
+
+</html>
