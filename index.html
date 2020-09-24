@@ -12,20 +12,26 @@
     <script src="https://unpkg.com/babel-polyfill@latest/dist/polyfill.min.js"></script>
     <script src="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.js"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        u {
+            cursor: pointer;
+        }
+    </style>
 </head>
 
 <body>
     <div id="vm">
+        <b-jumbotron>
+            <template v-slot:header>Blue Sky E-Learn Events Challenge</template>
+
+            <template v-slot:lead>
+                Event Search Portal
+            </template>
+
+        </b-jumbotron>
         <template>
             <b-container fluid>
                 <b-row>
-                    <b-col md="6" class="my-1">
-                        <b-form-group horizontal label="Filter" class="mb-0">
-                            <b-input-group>
-                                <b-form-input v-model="filter" placeholder="Type to Search" />
-                            </b-input-group>
-                        </b-form-group>
-                    </b-col>
                     <b-col md="6" class="my-1">
                         <b-form-group horizontal label="Per page" class="mb-0">
                             <b-form-select :options="pageOptions" v-model="perPage" @change="retrieveEventData()" />
@@ -39,9 +45,9 @@
                 </b-row>
 
                 <b-table stacked="md" :items="items" :fields="fields" :current-page="currentPage" :per-page="perPage"
-                    :filter="filter" :sort-direction="sortDirection" @filtered="onFiltered" responsive="sm">
+                    responsive="sm">
                     <template v-slot:cell(title)="data">
-                        <div @click="rowSelected(data)">{{data.item.title}}</div>
+                        <div @click="rowSelected(data)"><a><u>{{data.item.title}}</u></a></div>
                     </template>
 
                     <template v-slot:row-details="data">
@@ -76,7 +82,7 @@
 
                                 <b-row class="mb-2">
                                     <b-col sm="3" class="text-sm-right"><b>Attendees:</b></b-col>
-                                    <b-col v-b-modal.modal-2 @click="attendeesSelected(event.conference_id, data)">
+                                    <b-col v-b-modal.modal-2 @click="retrieveAttendees(event.conference_id, data)">
                                         {{ event.attendees }}
                                     </b-col>
                                 </b-row>
@@ -111,20 +117,11 @@
                         <b-modal id="modal-2" title="Attendees">
                             <b-table :fields="attendeeFields" :items="items[data.index]['attendees']"
                                 :per-page="attendeePerPage" :current-page="attendeeCurrentPage">
-                                <!-- <b-row class="mb-2">
-                                            <b-col sm="3" class="text-sm-right"><b>Name:</b></b-col>
-                                            <b-col>{{ attendee.first_name }} {{ attendee.last_name }}</b-col>
-                                        </b-row>
-
-                                        <b-row class="mb-2">
-                                            <b-col sm="3" class="text-sm-right"><b>E-mail:</b></b-col>
-                                            <b-col>{{ attendee.email }} </b-col>
-                                        </b-row> -->
                             </b-table>
                             <b-row>
                                 <b-col md="6" class="my-1">
-                                    <b-pagination :total-rows="totalRows" :per-page="attendeePerPage"
-                                        v-model="attendeeCurrentPage" class="my-0" />
+                                    <b-pagination :total-rows="attendeeTotalRows" :per-page="attendeePerPage"
+                                        v-model="attendeeCurrentPage" class="my-0" @input="paginateAttendees(data)" />
                                 </b-col>
                             </b-row>
                         </b-modal>
@@ -149,8 +146,8 @@
             data: {
                 items: items,
                 fields: [
-                    { key: 'title', label: 'Title', sortable: true, sortDirection: 'desc' },
-                    { key: 'description', label: 'Description', sortable: true },
+                    { key: 'title', label: 'Title' },
+                    { key: 'description', label: 'Description' },
                     { key: 'starts_at.local_pretty', label: 'Starts At:' },
                     { key: 'ends_at.local_pretty', label: 'Ends At:' },
                 ],
@@ -160,16 +157,15 @@
                     { key: 'email', label: 'E-mail' }
                 ],
                 currentPage: 1,
-                attendeeCurrentPage: 1,
                 perPage: 5,
+                attendeeCurrentPage: 1,
                 attendeePerPage: 50,
+                currentConferenceId: null,
                 totalRows: null,
                 attendeeTotalRows: null,
                 pageOptions: [...Array(25).keys()].map(x => ++x),
                 timeZone: 'US/Pacific',
                 timeZones: ['US/Arizona', 'US/Central', 'US/East-Indiana', 'US/Eastern', 'US/Hawaii', 'US/Indiana-Starke', 'US/Michigan', 'US/Mountain', 'US/Pacific', 'UTC'],
-                sortDirection: 'asc',
-                filter: null,
             },
             mounted() {
                 this.retrieveEventData('US/Pacific');
@@ -185,13 +181,13 @@
                                 event['speakers'] = null;
                                 event['attendees'] = null
                             });
-                            this.items = response.data.data.events;
+                            this.items = [];
+                            for (let i = 0; i < this.perPage * ((+ this.currentPage) - (+ 1)); i++) {
+                                this.items.push("");
+                            }
+                            response.data.data.events.forEach(event => this.items.push(event));
                             this.totalRows = response.data.data.meta.total_objects;
                         })
-                },
-                onFiltered(filteredItems) {
-                    this.totalRows = filteredItems.length
-                    this.currentPage = 1
                 },
                 rowSelected(data) {
                     data.item._showDetails = !this.items[data.index]._showDetails;
@@ -201,22 +197,27 @@
                             this.items[data.index]['conferenceDetails'] = response.data.response.conferences;
                         })
                 },
-                attendeesSelected(conferenceId, data) {
+                retrieveAttendees(conferenceId, data) {
                     axios
-                        .get('https://bluesky-fe-challenge.herokuapp.com/conferences/' + conferenceId + '/attendees', { headers: { 'X-Time-Zone': this.timeZone } })
+                        .get('https://bluesky-fe-challenge.herokuapp.com/conferences/' + conferenceId + '/attendees', { headers: { 'X-Time-Zone': this.timeZone, 'X-Per-Page': 50, 'X-Page': this.attendeeCurrentPage } })
                         .then(response => {
-                            console.log(response.attendees);
-                            this.items[data.index]['attendees'] = response.data.response.attendees;
-                            console.log(this.items);
+                            this.items[data.index]['attendees'] = [];
+                            for (let i = 0; i < this.attendeePerPage * ((+ this.attendeeCurrentPage) - (+ 1)); i++) {
+                                this.items[data.index]['attendees'].push("");
+                            }
+                            response.data.response.attendees.forEach(attendee => this.items[data.index]['attendees'].push(attendee));
+                            this.currentConferenceId = conferenceId;
+                            this.attendeeTotalRows = response.data.response.meta.total_objects;
                         })
+                },
+                paginateAttendees(data) {
+                    this.retrieveAttendees(this.currentConferenceId, data);
                 },
                 speakersSelected(conferenceId, data) {
                     axios
                         .get('https://bluesky-fe-challenge.herokuapp.com/conferences/' + conferenceId + '/speakers', { headers: { 'X-Time-Zone': this.timeZone } })
                         .then(response => {
-                            console.log(response.speakers);
                             this.items[data.index]['speakers'] = response.data.response.speakers;
-                            console.log(this.items);
                         })
                 },
 
